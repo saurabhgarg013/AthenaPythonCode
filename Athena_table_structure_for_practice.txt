@@ -1,0 +1,232 @@
+Learn how to harness the power of Amazon Athena to process all kinds of data — 
+from structured CSVs to semi-structured JSON, and even unstructured logs
+
+
+-- all data set avaiable in my github link   
+https://github.com/saurabhgarg013/AthenaPythonCode.git
+--you can used same S3 location in multiple tables in Amazon Athena.
+
+
+-- unstrucured data
+
+-- s3://2myathena/logs/logdata.txt
+
+
+CREATE EXTERNAL TABLE simple_logs (
+    ip_address STRING,
+    method STRING,
+    endpoint STRING,
+    response_code INT
+)
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.RegexSerDe'
+WITH SERDEPROPERTIES (
+    "input.regex" = "^(\\S+)\\s+(\\S+)\\s+(\\S+)\\s+(\\d+)$"
+)
+LOCATION 's3://2myathena/logs/';
+
+
+select * from simple_logs;
+
+---When you define a table in Athena for JSON data, you use a SerDe like org.apache.hive.hcatalog.data.JsonSerDe to tell Athena how to
+Deserialize: Convert raw JSON files into a tabular structure for querying.
+-----SerDes are used to specify how to interpret data stored in various formats
+
+CREATE EXTERNAL TABLE customer_data (
+  customer_id STRING,
+  customer_name STRING,
+  email STRING,
+  address STRUCT<street: STRING, city: STRING, state: STRING, postal_code: STRING>,
+  orders ARRAY<STRUCT<order_id: STRING, order_date: STRING, amount: DOUBLE>>
+)
+ROW FORMAT SERDE 'org.apache.hive.hcatalog.data.JsonSerDe'
+STORED AS TEXTFILE
+LOCATION 's3://2myathena/customer/';
+
+
+
+SELECT customer_id,address,orders
+FROM customer_data;
+
+SELECT customer_id, 
+        address.city, 
+        o.order_id, 
+        o.amount
+FROM customer_data
+CROSS JOIN UNNEST(orders) AS t(o);
+
+
+
+
+--------------------
+
+
+
+
+
+
+---
+CREATE EXTERNAL TABLE employees (
+  id INT,
+  name STRING,
+  gender STRING,
+  date STRING,
+  department STRING,
+  salary INT
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','  
+LINES TERMINATED BY '\n'  
+LOCATION 's3://2myathena/employeecsv/'
+TBLPROPERTIES ('skip.header.line.count'='1');  
+
+
+
+
+
+-----------------
+
+OpenCSVSerde:
+"id","name","gender","date","department","salary"
+"1","Alice,Jack","F","2023-01-01","Engineering","50000"
+
+CREATE EXTERNAL TABLE employees_quotes (
+  id INT,
+  name STRING,
+  gender STRING,
+  date STRING,
+  department STRING,
+  salary INT
+)
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
+WITH SERDEPROPERTIES (
+  'separatorChar' = ',',
+  'quoteChar' = '\"',
+  'escapeChar' = '\\'
+)
+LOCATION 's3://2myathena/employee-quotes-csv/'
+TBLPROPERTIES ('skip.header.line.count'='1');
+
+---------------------
+
+Partion table 
+
+
+
+
+--drop table employee_part;
+CREATE EXTERNAL TABLE employee_part (
+  id INT,
+  name STRING,
+  gender STRING,
+  date STRING,
+  department STRING,
+  salary INT
+)
+PARTITIONED BY (year STRING, mon STRING)
+ROW FORMAT DELIMITED 
+ FIELDS TERMINATED BY ',' 
+STORED AS TEXTFILE
+LOCATION
+  's3://2myathena/employee_part/'
+TBLPROPERTIES (
+  'classification'='csv', 
+  'skip.header.line.count'='1'
+);
+
+-- data stored in below location
+--s3://2myathena/employee_part/year=2025/mon=01/
+
+select * from employee_part;
+
+-- now add manull manually partition
+-- Add partition
+ALTER TABLE employee_part ADD PARTITION (year='2025', mon='01') LOCATION 's3://2myathena/employee_part/year=2025/mon=01/';
+select * from employee_part;
+
+
+-------------
+--drop table employee_part_data;
+CREATE EXTERNAL TABLE employee_part_data (
+  id INT,
+  name STRING,
+  gender STRING,
+  date STRING,
+  department STRING,
+  salary INT
+)
+PARTITIONED BY (year STRING, mon STRING)
+ROW FORMAT DELIMITED 
+ FIELDS TERMINATED BY ',' 
+STORED AS TEXTFILE
+LOCATION
+  's3://2myathena/employee_part/'
+TBLPROPERTIES (
+  'classification'='csv', 
+  'skip.header.line.count'='1'
+);
+
+
+MSCK REPAIR TABLE employee_part_data;
+
+select * from employee_part_data;
+
+
+
+
+
+
+
+
+
+
+
+----------
+
+
+--you can create [parquet files
+
+CREATE TABLE employee_part_new 
+WITH (
+  format = 'PARQUET',
+  external_location = 's3://2myathena/employee_part_new/'
+) AS
+SELECT
+  id,
+  name,
+  gender,
+  date,
+  department,
+  salary
+ FROM employee_part;
+ 
+ 
+
+------------
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
